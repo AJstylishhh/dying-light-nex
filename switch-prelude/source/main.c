@@ -128,7 +128,7 @@ static void show_keyboard_ip(char *out, size_t out_size) {
     swkbdConfigMakePresetDefault(&kbd);
     swkbdConfigSetHeaderText(&kbd, "Dying Light server IPv4");
     swkbdConfigSetSubText(&kbd, "Enter the reachable server IP");
-    swkbdConfigSetType(&kbd, SwkbdType_NumPad);
+    swkbdConfigSetType(&kbd, SwkbdType_Normal);
     swkbdConfigSetStringLenMax(&kbd, 15);
     swkbdConfigSetInitialText(&kbd, "192.168.137.1");
     swkbdShow(&kbd, out, out_size);
