@@ -1,0 +1,6 @@
+.env
+certs/
+*.key
+nextendo_secret.key
+*.exe
+dying-light-nex
