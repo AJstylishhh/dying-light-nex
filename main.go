@@ -195,8 +195,8 @@ func anonymousPID(username string) uint64 {
 }
 
 // Method 53 = BrowseMatchmakeSessionWithHostUrlsNoHolderNoResultRange.
-// It uses the same request as method 52, but the response also includes
-// lstGatheringUrls. For now, return an empty URL list.
+// Same request as method 52 (0x34, handled by the library). Response = List<MatchmakeSession>
+// followed by List<GatheringURLs> {u32 gid; List<StationURL>}.
 const methodBrowseWithHostURLs uint32 = 0x35
 
 func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
@@ -204,16 +204,61 @@ func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 		if req.Method != methodBrowseWithHostURLs {
 			return base(conn, req)
 		}
+
 		as52 := *req
 		as52.Method = 0x34
 		resp := base(conn, &as52)
 		if resp == nil || resp.IsError {
 			return resp
 		}
+
+		type entry struct {
+			ss   nex.MatchmakeSession
+			urls []*nex.StationURL
+		}
+		var kept []*entry
+
+		in := nex.NewStreamIn(resp.Body, conn.Settings)
+		count := in.U32()
+		for i := uint32(0); i < count && in.Err() == nil; i++ {
+			e := &entry{}
+			in.Extract(&e.ss)
+			if in.Err() != nil {
+				break
+			}
+			if e.ss.HostPID == conn.PID || e.ss.OwnerPID == conn.PID {
+				fmt.Printf("[DL] browse(53) skip own lobby gid=%d\n", e.ss.ID)
+				continue
+			}
+			host := conn.Endpoint.FindConnectionByPID(e.ss.HostPID)
+			if host == nil {
+				fmt.Printf("[DL] browse(53) skip gid=%d (host pid=%d not connected)\n", e.ss.ID, e.ss.HostPID)
+				continue
+			}
+			e.urls = host.Stations()
+			kept = append(kept, e)
+		}
+		if in.Err() != nil {
+			fmt.Printf("[DL] browse(53) could not re-read sessions (%v) -> returning no lobbies\n", in.Err())
+			kept = nil
+		}
+
 		out := nex.NewStreamOut(conn.Settings)
-		out.Write(resp.Body)
-		out.U32(0) // lstGatheringUrls: empty
-		fmt.Printf("[DL] browse(53) pid=%d -> sessions + empty URL list\n", conn.PID)
+		out.U32(uint32(len(kept)))
+		for _, e := range kept {
+			out.Add(&e.ss)
+		}
+		out.U32(uint32(len(kept)))
+		for _, e := range kept {
+			out.U32(e.ss.ID)
+			nex.WriteList(out, e.urls, func(o *nex.StreamOut, u *nex.StationURL) { o.StationURL(u) })
+			fmt.Printf("[DL] browse(53) gid=%d host=%d urls=%d\n", e.ss.ID, e.ss.HostPID, len(e.urls))
+			for _, u := range e.urls {
+				fmt.Printf("[DL]    %s\n", u.String())
+			}
+		}
+		fmt.Printf("[DL] browse(53) pid=%d -> %d lobby(ies)\n", conn.PID, len(kept))
+
 		return nex.NewRMCSuccess(conn.Settings, nex.ProtocolMatchmakeExtension, methodBrowseWithHostURLs, req.CallID, out.Bytes())
 	}
 }
