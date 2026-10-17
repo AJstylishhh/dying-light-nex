@@ -199,6 +199,22 @@ func anonymousPID(username string) uint64 {
 // followed by List<GatheringURLs> {u32 gid; List<StationURL>}.
 const methodBrowseWithHostURLs uint32 = 0x35
 
+// gatheringURLs is the NEX structure GatheringURLs {u32 m_gid; List<StationURL> m_lstStationURLs}.
+// It must be framed like any other structure (out.Add does that).
+type gatheringURLs struct {
+	gid  uint32
+	urls []*nex.StationURL
+}
+
+func (g *gatheringURLs) Levels() []nex.Level {
+	return []nex.Level{{
+		Save: func(o *nex.StreamOut) {
+			o.U32(g.gid)
+			nex.WriteList(o, g.urls, func(o *nex.StreamOut, u *nex.StationURL) { o.StationURL(u) })
+		},
+	}}
+}
+
 func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 	return func(conn *nex.Connection, req *nex.RMCMessage) *nex.RMCMessage {
 		if req.Method != methodBrowseWithHostURLs {
@@ -250,8 +266,7 @@ func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 		}
 		out.U32(uint32(len(kept)))
 		for _, e := range kept {
-			out.U32(e.ss.ID)
-			nex.WriteList(out, e.urls, func(o *nex.StreamOut, u *nex.StationURL) { o.StationURL(u) })
+			out.Add(&gatheringURLs{gid: e.ss.ID, urls: e.urls})
 			fmt.Printf("[DL] browse(53) gid=%d host=%d urls=%d\n", e.ss.ID, e.ss.HostPID, len(e.urls))
 			for _, u := range e.urls {
 				fmt.Printf("[DL]    %s\n", u.String())
