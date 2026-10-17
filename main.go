@@ -45,7 +45,7 @@ var (
 )
 
 func main() {
-	fmt.Println("[DL] build: framed GatheringURLs v4")
+	fmt.Println("[DL] build: URL-less GatheringURLs diagnostic v5")
 	settings := nex.NewSwitchSettings(accessKey, nexVersion)
 
 	// --- Auth server ---
@@ -252,7 +252,7 @@ func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 				fmt.Printf("[DL] browse(53) skip gid=%d (host pid=%d not connected)\n", e.ss.ID, e.ss.HostPID)
 				continue
 			}
-			e.urls = host.Stations()
+			e.urls = nil // DIAGNOSTIC: isolate whether station URL payload triggers 2306-0116
 			kept = append(kept, e)
 		}
 		if in.Err() != nil {
