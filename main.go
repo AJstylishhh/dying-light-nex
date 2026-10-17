@@ -213,7 +213,7 @@ func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 		out := nex.NewStreamOut(conn.Settings)
 		out.Write(resp.Body)
 		out.U32(0) // lstGatheringUrls: empty
-		fmt.Printf("[DL] browse(53) pid=%d -> sessions + empty URL list\\n", conn.PID)
+		fmt.Printf("[DL] browse(53) pid=%d -> sessions + empty URL list\n", conn.PID)
 		return nex.NewRMCSuccess(conn.Settings, nex.ProtocolMatchmakeExtension, methodBrowseWithHostURLs, req.CallID, out.Bytes())
 	}
 }
