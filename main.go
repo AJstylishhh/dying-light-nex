@@ -246,6 +246,7 @@ func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 			if in.Err() != nil {
 				break
 			}
+			fmt.Printf("[DL] session candidate gid=%d owner=%d host=%d state=%d open=%v policy=%d flags=%#x min=%d max=%d players=%d mode=%d system=%d appdata=%d key=%d userpw=%v syspw=%v desc=%q\\n", e.ss.ID, e.ss.OwnerPID, e.ss.HostPID, e.ss.State, e.ss.OpenParticipation, e.ss.ParticipationPolicy, e.ss.Flags, e.ss.MinParticipants, e.ss.MaxParticipants, e.ss.NumParticipants, e.ss.GameMode, e.ss.MatchmakeSystem, len(e.ss.ApplicationData), len(e.ss.SessionKey), e.ss.UserPasswordEnabled, e.ss.SystemPasswordEnabled, e.ss.Description)
 			if e.ss.HostPID == conn.PID || e.ss.OwnerPID == conn.PID {
 				fmt.Printf("[DL] browse(53) skip own lobby gid=%d\n", e.ss.ID)
 				continue
