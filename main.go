@@ -45,6 +45,9 @@ var (
 )
 
 func main() {
+	// Dying Light public lobbies must be marked active/open so the game enables Join.
+	os.Setenv("NEXTENDO_OPEN_PARTICIPATION", "1")
+	fmt.Println("[DL] build: open lobbies enabled v7")
 	fmt.Println("[DL] build: host station URLs restored v6")
 	settings := nex.NewSwitchSettings(accessKey, nexVersion)
 
