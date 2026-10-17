@@ -194,6 +194,30 @@ func anonymousPID(username string) uint64 {
 	return 1800000000 + uint64(h.Sum32()%100000000)
 }
 
+// Method 53 = BrowseMatchmakeSessionWithHostUrlsNoHolderNoResultRange.
+// It uses the same request as method 52, but the response also includes
+// lstGatheringUrls. For now, return an empty URL list.
+const methodBrowseWithHostURLs uint32 = 0x35
+
+func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
+	return func(conn *nex.Connection, req *nex.RMCMessage) *nex.RMCMessage {
+		if req.Method != methodBrowseWithHostURLs {
+			return base(conn, req)
+		}
+		as52 := *req
+		as52.Method = 0x34
+		resp := base(conn, &as52)
+		if resp == nil || resp.IsError {
+			return resp
+		}
+		out := nex.NewStreamOut(conn.Settings)
+		out.Write(resp.Body)
+		out.U32(0) // lstGatheringUrls: empty
+		fmt.Printf("[DL] browse(53) pid=%d -> sessions + empty URL list\\n", conn.PID)
+		return nex.NewRMCSuccess(conn.Settings, nex.ProtocolMatchmakeExtension, methodBrowseWithHostURLs, req.CallID, out.Bytes())
+	}
+}
+
 func logRMC(tag string) func(*nex.Connection, *nex.RMCMessage) {
 	return func(c *nex.Connection, req *nex.RMCMessage) {
 		fmt.Printf("[DL %s] pid=%d proto=%#x method=%d call=%d\n", tag, c.PID, req.Protocol, req.Method, req.CallID)
