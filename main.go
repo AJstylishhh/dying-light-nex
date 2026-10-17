@@ -45,6 +45,7 @@ var (
 )
 
 func main() {
+	fmt.Println("[DL] build: framed GatheringURLs v4")
 	settings := nex.NewSwitchSettings(accessKey, nexVersion)
 
 	// --- Auth server ---
