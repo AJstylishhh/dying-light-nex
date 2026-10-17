@@ -77,7 +77,7 @@ func main() {
 
 	mm := nex.NewMatchmaking()
 	secureEndpoint.Register(nex.ProtocolSecureConnection, nex.SecureConnectionHandler())
-	secureEndpoint.Register(nex.ProtocolMatchmakeExtension, mm.ExtensionHandler())
+	secureEndpoint.Register(nex.ProtocolMatchmakeExtension, extensionWithBrowseURLs(mm.ExtensionHandler()))
 	secureEndpoint.Register(nex.ProtocolMatchMaking, mm.MatchMakingHandler())
 	secureEndpoint.Register(nex.ProtocolMatchMakingExt, mm.MatchMakingExtHandler())
 	secureEndpoint.Register(nex.ProtocolNATTraversal, nex.NATTraversalHandler())
