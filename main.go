@@ -42,14 +42,32 @@ var (
 	securePassword = envOr("NEXTENDO_SECURE_PASSWORD", "securepasswordplz1")
 	nextendoSecret = loadNextendoSecret()
 	requireAccount = os.Getenv("NEXTENDO_REQUIRE_ACCOUNT") == "1"
+	// Pair-relay UDP range (used when direct hole-punch fails).
+	relayPortBase = envOrInt("NEXTENDO_RELAY_PORT_BASE", 40000)
+	relayPortSpan = envOrInt("NEXTENDO_RELAY_PORT_SPAN", 100)
 )
 
 func main() {
 	// Dying Light public lobbies must be marked active/open so the game enables Join.
 	os.Setenv("NEXTENDO_OPEN_PARTICIPATION", "1")
-	fmt.Println("[DL] build: open lobbies enabled v7")
+	// Repoint NAT probes through the server when needed (helps emulator ↔ console).
+	if os.Getenv("NEXTENDO_PROBE_REPOINT") == "" {
+		os.Setenv("NEXTENDO_PROBE_REPOINT", "1")
+	}
+	fmt.Println("[DL] build: open lobbies enabled v8")
 	fmt.Println("[DL] build: host station URLs restored v6")
+	fmt.Println("[DL] build: pair relay armed v8")
 	settings := nex.NewSwitchSettings(accessKey, nexVersion)
+
+	// Arm the UDP pair relay. After 2 failed direct hole-punches the core marks a
+	// player as needing relay; without SetPairRelay those punches stay relaye=false
+	// and Join never completes (Switch ↔ Citron).
+	relayHost := envOr("NEXTENDO_RELAY_HOST", nextendoHost)
+	nex.SetPairRelay(relayHost, relayPortBase, relayPortSpan)
+	// Open relay to everyone who needs it (after failed punches), not only a PID list.
+	nex.SetRelayVolontaires(nil, nil, true)
+	fmt.Printf("[DL] pair relay armed on %s UDP %d-%d (open to all who need it)\n",
+		relayHost, relayPortBase, relayPortBase+relayPortSpan-1)
 
 	// --- Auth server ---
 	secureURL := nex.NewStationURL("prudp")
@@ -246,7 +264,7 @@ func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 			if in.Err() != nil {
 				break
 			}
-			fmt.Printf("[DL] session candidate gid=%d owner=%d host=%d state=%d open=%v policy=%d flags=%#x min=%d max=%d players=%d mode=%d system=%d appdata=%d key=%d userpw=%v syspw=%v desc=%q\\n", e.ss.ID, e.ss.OwnerPID, e.ss.HostPID, e.ss.State, e.ss.OpenParticipation, e.ss.ParticipationPolicy, e.ss.Flags, e.ss.MinParticipants, e.ss.MaxParticipants, e.ss.NumParticipants, e.ss.GameMode, e.ss.MatchmakeSystem, len(e.ss.ApplicationData), len(e.ss.SessionKey), e.ss.UserPasswordEnabled, e.ss.SystemPasswordEnabled, e.ss.Description)
+			fmt.Printf("[DL] session candidate gid=%d owner=%d host=%d state=%d open=%v policy=%d flags=%#x min=%d max=%d players=%d mode=%d system=%d appdata=%d key=%d userpw=%v syspw=%v desc=%q\n", e.ss.ID, e.ss.OwnerPID, e.ss.HostPID, e.ss.State, e.ss.OpenParticipation, e.ss.ParticipationPolicy, e.ss.Flags, e.ss.MinParticipants, e.ss.MaxParticipants, e.ss.NumParticipants, e.ss.GameMode, e.ss.MatchmakeSystem, len(e.ss.ApplicationData), len(e.ss.SessionKey), e.ss.UserPasswordEnabled, e.ss.SystemPasswordEnabled, e.ss.Description)
 			if e.ss.HostPID == conn.PID || e.ss.OwnerPID == conn.PID {
 				fmt.Printf("[DL] browse(53) skip own lobby gid=%d\n", e.ss.ID)
 				continue
