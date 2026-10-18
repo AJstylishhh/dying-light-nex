@@ -54,9 +54,13 @@ func main() {
 	if os.Getenv("NEXTENDO_PROBE_REPOINT") == "" {
 		os.Setenv("NEXTENDO_PROBE_REPOINT", "1")
 	}
-	fmt.Println("[DL] build: open lobbies enabled v8")
+	// Allow pair-relay on same-LAN private IPs (requires patched nextendo-nex — run patch-module.ps1).
+	if os.Getenv("NEXTENDO_RELAY_ALLOW_PRIVATE") == "" {
+		os.Setenv("NEXTENDO_RELAY_ALLOW_PRIVATE", "1")
+	}
+	fmt.Println("[DL] build: open lobbies enabled v9")
 	fmt.Println("[DL] build: host station URLs restored v6")
-	fmt.Println("[DL] build: pair relay armed v8")
+	fmt.Println("[DL] build: pair relay armed v9 (LAN private IPs allowed)")
 	settings := nex.NewSwitchSettings(accessKey, nexVersion)
 
 	// Arm the UDP pair relay. After 2 failed direct hole-punches the core marks a
@@ -68,6 +72,7 @@ func main() {
 	nex.SetRelayVolontaires(nil, nil, true)
 	fmt.Printf("[DL] pair relay armed on %s UDP %d-%d (open to all who need it)\n",
 		relayHost, relayPortBase, relayPortBase+relayPortSpan-1)
+	fmt.Println("[DL] NEXTENDO_RELAY_ALLOW_PRIVATE=1 (if hole-punch still shows relaye=false, run .\\patch-module.ps1 once)")
 
 	// --- Auth server ---
 	secureURL := nex.NewStationURL("prudp")
@@ -139,13 +144,11 @@ func resolveUser(username string, extraData []byte) (uint64, []byte, bool) {
 	sk := sha256.Sum256([]byte("nextendo-src:" + username))
 	sourceKey := sk[:]
 
-	// 1. Signed nx2 token from Nextendo account service
 	if pid, ok := nextendoPIDFromToken(username); ok {
 		fmt.Printf("[Auth] nx2 token → pid=%d\n", pid)
 		return pid, sourceKey, true
 	}
 
-	// 2. Numeric username (emulator PID or Switch NSA id range)
 	if n, err := strconv.ParseUint(username, 10, 64); err == nil && n >= 1800000000 {
 		fmt.Printf("[Auth] numeric identity pid=%d\n", n)
 		if requireAccount {
@@ -155,7 +158,6 @@ func resolveUser(username string, extraData []byte) (uint64, []byte, bool) {
 		return n, sourceKey, true
 	}
 
-	// 3. Anonymous / guest
 	if requireAccount {
 		fmt.Printf("[Auth] anonymous REFUSED (account required): %q\n", username)
 		return 0, nil, false
@@ -216,13 +218,8 @@ func anonymousPID(username string) uint64 {
 	return 1800000000 + uint64(h.Sum32()%100000000)
 }
 
-// Method 53 = BrowseMatchmakeSessionWithHostUrlsNoHolderNoResultRange.
-// Same request as method 52 (0x34, handled by the library). Response = List<MatchmakeSession>
-// followed by List<GatheringURLs> {u32 gid; List<StationURL>}.
 const methodBrowseWithHostURLs uint32 = 0x35
 
-// gatheringURLs is the NEX structure GatheringURLs {u32 m_gid; List<StationURL> m_lstStationURLs}.
-// It must be framed like any other structure (out.Add does that).
 type gatheringURLs struct {
 	gid  uint32
 	urls []*nex.StationURL
