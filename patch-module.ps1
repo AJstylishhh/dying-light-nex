@@ -1,12 +1,12 @@
-# Patches nextendo-nex in the local Go module cache so pair-relay works on LAN.
-# Root cause: PublicIPOf() returns "" for private IPs (192.168.x.x), so PairRelayFor never arms.
-# Run once from the dying-light-nex folder, then go run . again.
+# Patches nextendo-nex so pair-relay works on LAN (private IPs).
+# Run once from the dying-light-nex folder, then: go run .
 
 $ErrorActionPreference = "Stop"
 Write-Host "Looking for nextendo-nex in module cache..."
 
 $gopath = (go env GOPATH).Trim()
 $modRoot = Join-Path $gopath "pkg\mod\github.com\!nextendo!network"
+
 if (-not (Test-Path $modRoot)) {
   Write-Host "Module not downloaded yet. Running go mod download..."
   go mod download github.com/NextendoNetwork/nextendo-nex
@@ -19,64 +19,47 @@ if (-not $dirs) {
   exit 1
 }
 
-foreach ($d in $dirs) {
-  $file = Join-Path $d.FullName "relaypair.go"
-  if (-not (Test-Path $file)) { continue }
-  $text = Get-Content -Raw $file
-  if ($text -match "NEXTENDO_RELAY_ALLOW_PRIVATE") {
-    Write-Host "Already patched: $($d.Name)"
-    continue
-  }
-  # Make module files writable
-  attrib -r $file
-  $old = @'
-func PublicIPOf(c *Connection) string {
-	if c == nil {
-		return ""
-	}
-	host, _, err := net.SplitHostPort(c.RemoteAddr)
-	if err != nil || host == "" || isPrivateIP(host) {
-		return ""
-	}
-
-	return host
-}
-'@
-  $new = @'
-func PublicIPOf(c *Connection) string {
-	if c == nil {
-		return ""
-	}
-	host, _, err := net.SplitHostPort(c.RemoteAddr)
-	if err != nil || host == "" {
+$needle = 'if err != nil || host == "" || isPrivateIP(host) {'
+$replacement = @'
+if err != nil || host == "" {
 		return ""
 	}
 	if isPrivateIP(host) {
 		if os.Getenv("NEXTENDO_RELAY_ALLOW_PRIVATE") == "1" {
 			return host
 		}
-		return ""
-	}
-
-	return host
-}
 '@
-  if ($text -notlike "*$($old.Substring(0,40))*") {
-    # flexible match: only the critical if line
-    $patched = $text -replace 'if err != nil || host == "" || isPrivateIP\(host\) \{\r?\n\t\treturn ""\r?\n\t\}', "if err != nil || host == `"`" {`n`t`treturn `"`"`n`t}`n`tif isPrivateIP(host) {`n`t`tif os.Getenv(`"NEXTENDO_RELAY_ALLOW_PRIVATE`") == `"1`" {`n`t`t`treturn host`n`t`t}`n`t`treturn `"`"`n`t}"
-    if ($patched -eq $text) {
-      Write-Host "WARNING: pattern not found in $($d.Name) — open relaypair.go and patch PublicIPOf manually"
-      continue
-    }
-    Set-Content -Path $file -Value $patched -NoNewline
-  } else {
-    Set-Content -Path $file -Value ($text.Replace($old, $new)) -NoNewline
+
+$anyPatched = $false
+foreach ($d in $dirs) {
+  $file = Join-Path $d.FullName "relaypair.go"
+  if (-not (Test-Path $file)) { continue }
+
+  $text = [System.IO.File]::ReadAllText($file)
+  if ($text -match "NEXTENDO_RELAY_ALLOW_PRIVATE") {
+    Write-Host ("Already patched: " + $d.Name)
+    $anyPatched = $true
+    continue
   }
-  Write-Host "Patched: $($d.Name)\relaypair.go"
+
+  if ($text -notmatch [regex]::Escape($needle)) {
+    Write-Host ("WARNING: pattern not found in " + $d.Name)
+    continue
+  }
+
+  # Clear read-only attribute Go sets on module cache files
+  $item = Get-Item $file
+  if ($item.IsReadOnly) { $item.IsReadOnly = $false }
+
+  $newText = $text.Replace($needle, $replacement.TrimEnd())
+  [System.IO.File]::WriteAllText($file, $newText)
+  Write-Host ("Patched: " + $d.Name + "\relaypair.go")
+  $anyPatched = $true
 }
 
 Write-Host ""
-Write-Host "Done. Now start the server with:"
-Write-Host '  $env:NEXTENDO_RELAY_ALLOW_PRIVATE = "1"'
-Write-Host "  (main.go v9 sets this automatically)"
-Write-Host "  go run ."
+if ($anyPatched) {
+  Write-Host "Done. Start the server with go run ."
+} else {
+  Write-Host "Nothing patched. Paste any WARNING lines above."
+}
