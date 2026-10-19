@@ -14,85 +14,79 @@ This is a **private / self-hosted** starting point. It is **not** an official Ne
 
 ---
 
-## What works today
+## What works today (v10)
 
 - Auth (TicketGranting / LoginEx) with the correct access key
 - Secure connection + common matchmaking / NAT protocols
 - Guest logins when `NEXTENDO_REQUIRE_ACCOUNT=0`
 - Create + browse public lobbies (Switch and Citron)
-- **Pair relay** armed by default: after 2 failed hole-punches the server can relay traffic so Join is not stuck on `relaye=false`
+- **Built-in NNCS NAT-check responder** (UDP 10025/10125) — required for Join
+- **Unsigned PID fix** for real Switch account IDs in station URLs
+- Pair relay armed for failed hole-punch fallback
 
-## What still needs work
+## Why Join was broken before v10
 
-- Station URL quality (`port=1` on local stations still appears in some Register paths)
-- Presence / `UpdateNotificationData` if the game expects it for Join UI
-- Full polish for public matchmaking across the internet
-
-Progressive testing order:
-
-1. Two clients can create a session with each other
-2. Private / friend co-op
-3. Public matchmaking
+Dying Light uses NEX’s own P2P stack. Before joining, the client must learn its public UDP endpoint from the **NAT check** (`nncs1` / `nncs2` on ports **10025** and **10125**). Without a reply it never hole-punches and shows “game no longer available” / gray Join. The v10 server answers those probes itself.
 
 ---
 
-## Quick start (local test)
+## Quick start
 
-### 1. Generate a self-signed certificate
+### 1. Get the code
 
-```bash
-mkdir -p certs
-openssl req -x509 -newkey rsa:2048 -keyout certs/server.key -out certs/server.crt \
-  -days 365 -nodes -subj "/CN=g27332e00-lp1.s.n.srv.nintendo.net"
+```powershell
+cd path\to\dying-light-nex
+git pull
+# First time after v10: wire main.go
+.\apply-v10.ps1
 ```
 
-### 2. Open firewall ports (Windows, Administrator PowerShell)
+Or copy `main.go`, `nncs.go`, `pid.go`, `trace.go` from the fixed zip.
+
+### 2. Firewall (Administrator PowerShell)
 
 ```powershell
 New-NetFirewallRule -DisplayName "DyingLight NEX Auth" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
 New-NetFirewallRule -DisplayName "DyingLight NEX Secure" -Direction Inbound -Protocol TCP -LocalPort 60010 -Action Allow
 New-NetFirewallRule -DisplayName "DyingLight NEX Relay" -Direction Inbound -Protocol UDP -LocalPort 40000-40099 -Action Allow
+New-NetFirewallRule -DisplayName "DyingLight NNCS" -Direction Inbound -Protocol UDP -LocalPort 10025,10125 -Action Allow
 ```
 
-### 3. Run (set env in the same PowerShell window)
+### 3. Run
 
 ```powershell
-cd path\to\dying-light-nex
 $env:NEXTENDO_HOST = "192.168.1.106"   # your PC LAN IP
 $env:AUTH_PORT = "443"
 $env:SECURE_PORT = "60010"
 $env:CERT_FILE = "certs/server.crt"
 $env:KEY_FILE = "certs/server.key"
 $env:NEXTENDO_REQUIRE_ACCOUNT = "0"
+go mod tidy
 go run .
 ```
 
 You should see:
 
 ```
-[DL] build: open lobbies enabled v8
-[DL] build: pair relay armed v8
-[DL] pair relay armed on 192.168.1.106 UDP 40000-40099 (open to all who need it)
+[DL] build: NAT-check responder built in v10
+[NNCS] NAT-check responder on UDP 0.0.0.0:10025
+[NNCS] NAT-check responder on UDP 0.0.0.0:10125
+[DL] pair relay armed on ...
 [DL Auth] listening :443 ...
-[DL Secure] listening :60010  (accessKey=0da38dbb gameServer=27332e00)
+[DL Secure] listening :60010 ...
 ```
 
 ### 4. Point the Switch at your server
 
-Add to Atmosphere hosts (`emummc.txt` / `sysmmc.txt`):
+Atmosphere hosts (`emummc.txt` / `sysmmc.txt`):
 
 ```
 192.168.1.106  g27332e00-lp1.s.n.srv.nintendo.net
 ```
 
-Fully power off and on the Switch after editing hosts.
+Fully power off and on after editing hosts.
 
-### 5. Test join
-
-1. Start this server, leave it running.
-2. Host creates a lobby on Citron or Switch.
-3. Other client opens Find Games.
-4. Watch for `[relais-besoin]` then later `relaye=true` (or successful join) instead of only `hole-punch FAILED ... relaye=false`.
+For emulators (Citron), set the server IP and NAT IP so both nncs1 and nncs2 reach this machine.
 
 ---
 
@@ -100,7 +94,6 @@ Fully power off and on the Switch after editing hosts.
 
 - **Do not** share your game dump, keys, or copyrighted files.
 - Self-signed certs are fine for private testing.
-- Port 443 often needs admin on Windows.
 - This server ships **no** Nintendo code. You must own a legitimate copy of the game.
 
 ## License
