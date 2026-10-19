@@ -61,7 +61,11 @@ func main() {
 	fmt.Println("[DL] build: open lobbies enabled v9")
 	fmt.Println("[DL] build: host station URLs restored v6")
 	fmt.Println("[DL] build: pair relay armed v9 (LAN private IPs allowed)")
+	fmt.Println("[DL] build: NAT-check responder built in v10")
 	settings := nex.NewSwitchSettings(accessKey, nexVersion)
+
+	// Without a NAT-check answer the joiner never hole-punches (see nncs.go).
+	startNNCS()
 
 	// Arm the UDP pair relay. After 2 failed direct hole-punches the core marks a
 	// player as needing relay; without SetPairRelay those punches stay relaye=false
@@ -94,7 +98,7 @@ func main() {
 		SessionKeyLength: sessionKeyLen,
 		ResolveUser:      resolveUser,
 	}
-	authEndpoint.Register(nex.ProtocolTicketGranting, authCfg.Handler())
+	authEndpoint.Register(nex.ProtocolTicketGranting, traced(authCfg.Handler()))
 	authEndpoint.OnRMC = logRMC("Auth")
 	authServer := nex.NewServer(authEndpoint)
 
@@ -103,13 +107,13 @@ func main() {
 	secureEndpoint.SetSecureAccount(securePassword, securePID)
 
 	mm := nex.NewMatchmaking()
-	secureEndpoint.Register(nex.ProtocolSecureConnection, nex.SecureConnectionHandler())
-	secureEndpoint.Register(nex.ProtocolMatchmakeExtension, extensionWithBrowseURLs(mm.ExtensionHandler()))
-	secureEndpoint.Register(nex.ProtocolMatchMaking, mm.MatchMakingHandler())
-	secureEndpoint.Register(nex.ProtocolMatchMakingExt, mm.MatchMakingExtHandler())
-	secureEndpoint.Register(nex.ProtocolNATTraversal, nex.NATTraversalHandler())
-	secureEndpoint.Register(nex.ProtocolRanking, nex.RankingHandler())
-	secureEndpoint.Register(nex.ProtocolUtility, nex.UtilityHandler())
+	secureEndpoint.Register(nex.ProtocolSecureConnection, traced(withUnsignedPIDs(nex.SecureConnectionHandler())))
+	secureEndpoint.Register(nex.ProtocolMatchmakeExtension, traced(extensionWithBrowseURLs(mm.ExtensionHandler())))
+	secureEndpoint.Register(nex.ProtocolMatchMaking, traced(mm.MatchMakingHandler()))
+	secureEndpoint.Register(nex.ProtocolMatchMakingExt, traced(mm.MatchMakingExtHandler()))
+	secureEndpoint.Register(nex.ProtocolNATTraversal, traced(nex.NATTraversalHandler()))
+	secureEndpoint.Register(nex.ProtocolRanking, traced(nex.RankingHandler()))
+	secureEndpoint.Register(nex.ProtocolUtility, traced(nex.UtilityHandler()))
 	secureEndpoint.OnRMC = logRMC("Secure")
 	secureEndpoint.OnConnect = func(c *nex.Connection) {
 		fmt.Printf("[DL Secure] connected pid=%d id=%d addr=%s\n", c.PID, c.ID, c.RemoteAddr)
@@ -301,6 +305,7 @@ func extensionWithBrowseURLs(base nex.RMCHandler) nex.RMCHandler {
 func logRMC(tag string) func(*nex.Connection, *nex.RMCMessage) {
 	return func(c *nex.Connection, req *nex.RMCMessage) {
 		fmt.Printf("[DL %s] pid=%d proto=%#x method=%d call=%d\n", tag, c.PID, req.Protocol, req.Method, req.CallID)
+		traceRequest(tag, c, req)
 	}
 }
 
